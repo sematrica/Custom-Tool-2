@@ -1,0 +1,209 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Schedule - Military Time Clock</title>
+    <style>
+        body {
+            background-color: #1c1c1c;
+            color: #d4af37;
+            font-family: 'Arial', sans-serif;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            min-height: 100vh;
+            margin: 0;
+            padding: 20px;
+            position: relative;
+            overflow: hidden;
+        }
+
+        #clock-container {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            text-align: center;
+            background-color: rgba(0, 0, 0, 0.8);
+            padding: 20px;
+            border-radius: 12px;
+            border: 4px solid #d4af37;
+            box-shadow: 0 6px 12px rgba(212, 175, 55, 0.5);
+            cursor: grab;
+            resize: both;
+            overflow: auto;
+            min-width: 220px;
+            min-height: 170px;
+        }
+
+        .time-zone {
+            font-size: 1.2em;
+            margin: 5px 0;
+            color: #ffffff;
+        }
+
+        #central-time {
+            font-size: 2em;
+            font-weight: bold;
+            color: #50c878;
+        }
+
+        #user-local-time {
+            font-size: 1.4em;
+            font-weight: bold;
+            color: #ffcc00;
+        }
+
+        .reminder {
+            margin: 10px;
+            padding: 15px;
+            border-radius: 5px;
+            font-size: 1.2em;
+            font-weight: bold;
+            text-align: center;
+            background-color: rgba(10, 10, 10, 0.9);
+            border: 2px solid #d4af37;
+            box-shadow: 0 2px 6px rgba(212, 175, 55, 0.3);
+            color: #ffffff;
+            position: absolute;
+            cursor: grab;
+        }
+
+        .active {
+            opacity: 1;
+        }
+
+        .inactive {
+            opacity: 0.5;
+        }
+
+        #background-upload {
+            position: absolute;
+            bottom: 50px;
+            left: 10px;
+            background-color: rgba(0, 0, 0, 0.7);
+            padding: 10px;
+            border-radius: 5px;
+            border: 2px solid #d4af37;
+            color: white;
+            cursor: grab;
+        }
+    </style>
+</head>
+<body>
+
+<input type="file" id="background-upload" accept="image/*">
+
+<div id="clock-container">
+    <div id="user-local-time">User Time (Local): <span id="clock-local"></span></div>
+    <div id="central-time">Central (USCT) (Server) : <span id="clock-central"></span></div>
+    <div class="time-zone">Eastern: (USET) <span id="clock-eastern"></span></div>
+    <div class="time-zone">Mountain: (USMT) <span id="clock-mountain"></span></div>
+    <div class="time-zone">Pacific: (USPT) <span id="clock-pacific"></span></div>
+</div>
+
+<div id="reminders"></div>
+
+<script>
+    let reminders = [
+        { text: 'Attest 1 Timely', start: 0, end: 14 * 60 + 49, color: '#50c878' },
+        { text: 'Attest 2 Warning', start: 15 * 60, end: 17 * 60 + 44, color: '#d4af37' },
+        { text: 'Attest 3 Delay', start: 17 * 60 + 45, end: 23 * 60 + 59, color: '#ff4500' },
+        { text: 'Hold Multiple', start: 15 * 60, end: 18 * 60, color: '#1e90ff' }
+    ];
+
+    function updateClock() {
+        const now = new Date();
+        const dateOptions = { month: '2-digit', day: '2-digit', year: 'numeric' };
+        const timeOptions = { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' };
+
+        function formatTime(timeZone) {
+            return new Intl.DateTimeFormat('en-US', { ...timeOptions, ...dateOptions, timeZone }).format(now);
+        }
+
+        document.getElementById("clock-local").textContent = now.toLocaleString();
+        document.getElementById("clock-central").textContent = formatTime("America/Chicago");
+        document.getElementById("clock-eastern").textContent = formatTime("America/New_York");
+        document.getElementById("clock-mountain").textContent = formatTime("America/Denver");
+        document.getElementById("clock-pacific").textContent = formatTime("America/Los_Angeles");
+
+        updateReminders(now.getHours(), now.getMinutes());
+    }
+
+    function updateReminders(hour, minute) {
+        const remindersContainer = document.getElementById('reminders');
+
+        reminders.forEach((reminder, index) => {
+            let element = document.getElementById(`reminder-${index}`);
+
+            if (!element) {
+                element = document.createElement('div');
+                element.className = 'reminder';
+                element.id = `reminder-${index}`;
+                element.style.border = `2px solid ${reminder.color}`;
+                element.style.left = `${50 + index * 200}px`;
+                element.style.top = `${150 + index * 80}px`;
+                makeDraggable(element);
+                remindersContainer.appendChild(element);
+            }
+
+            let isActive = hour * 60 + minute >= reminder.start && hour * 60 + minute <= reminder.end;
+
+            element.innerHTML = `
+                <strong>${reminder.text}</strong><br>
+                Active from: ${String(Math.floor(reminder.start / 60)).padStart(2, '0')}:${String(reminder.start % 60).padStart(2, '0')} -
+                ${String(Math.floor(reminder.end / 60)).padStart(2, '0')}:${String(reminder.end % 60).padStart(2, '0')} (US Central Time)<br>
+                Current Status: ${isActive
+                    ? '<span style="color: #50c878;">Active</span>'
+                    : '<span style="color: #ff4500;">Inactive</span>'}
+            `;
+
+            element.classList.toggle('active', isActive);
+            element.classList.toggle('inactive', !isActive);
+        });
+    }
+
+    function makeDraggable(element) {
+        let offsetX, offsetY, isDragging = false;
+
+        element.addEventListener('mousedown', (e) => {
+            isDragging = true;
+            offsetX = e.clientX - element.getBoundingClientRect().left;
+            offsetY = e.clientY - element.getBoundingClientRect().top;
+            element.style.cursor = 'grabbing';
+        });
+
+        document.addEventListener('mousemove', (e) => {
+            if (!isDragging) return;
+            let x = e.clientX - offsetX;
+            let y = e.clientY - offsetY;
+            element.style.left = `${x}px`;
+            element.style.top = `${y}px`;
+        });
+
+        document.addEventListener('mouseup', () => {
+            isDragging = false;
+            element.style.cursor = 'grab';
+        });
+    }
+
+    makeDraggable(document.getElementById("clock-container"));
+    makeDraggable(document.getElementById("background-upload"));
+
+    document.getElementById('background-upload').addEventListener('change', function(event) {
+        const file = event.target.files[0];
+        if (file) {
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                document.body.style.backgroundImage = `url('${e.target.result}')`;
+                document.body.style.backgroundSize = 'cover';
+            };
+            reader.readAsDataURL(file);
+        }
+    });
+
+    setInterval(updateClock, 1000);
+</script>
+
+</body>
+</html>
